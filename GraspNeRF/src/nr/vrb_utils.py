@@ -37,7 +37,7 @@ VRB-predicted contact points in the 3D quality volume.
 Args:
     qual_vol (np.ndarray): 3D volume of grasp quality scores.
     points_world (list or np.ndarray): One or more contact points in world coordinates.
-    voxel_size (float): Size of each voxel (used to convert world → voxel coordinates).
+    voxel_size (float): Size of each voxel in meters.
     radius (int): Radius around each voxel to boost.
     boost_value (float): The value to assign or max into the boosted region.
     
@@ -166,83 +166,20 @@ def combine_contact_points(folder_path, top_k=150):
         raise RuntimeError(f"No valid .npz files found in {folder_path}")
     
     combined_points = np.vstack(all_points)
-    dedup_points = deduplicate_contact_points(combined_points, merge_radius=0.003)
-    return dedup_points
+    return combined_points
 
-
-def deduplicate_contact_points(points, merge_radius=0.003):
-    """
-    Deduplicates contact points by merging those within a certain spatial radius.
-
-    Args:
-        points (np.ndarray): (N, 3) contact points.
-        merge_radius (float): Maximum distance between points to consider them duplicates.
-
-    Returns:
-        np.ndarray: (M, 3) deduplicated contact points.
-    """
-    tree = cKDTree(points)
-    visited = np.zeros(len(points), dtype=bool)
-    unique_points = []
-
-    for i, pt in enumerate(points):
-        if visited[i]:
-            continue
-        idxs = tree.query_ball_point(pt, merge_radius)
-        cluster = points[idxs]
-        cluster_center = np.mean(cluster, axis=0)  # Use centroid of cluster
-        unique_points.append(cluster_center)
-        visited[idxs] = True  # Mark all in cluster as visited
-
-    return np.array(unique_points)
-
-def deduplicate_contact_points_greedy(points, merge_radius=0.003):
-    """
-    Greedy de-dup that preserves input order: scans from first to last and
-    keeps a point only if it's not within 'merge_radius' of any kept point.
-    This respects pre-sorted-by-distance order.
-    """
-    if len(points) == 0:
-        return points
-    kept = []
-    # use a small growing tree for speed once we have a few points
-    kept_arr = []
-    tree = None
-    for i, p in enumerate(points):
-        if tree is None:
-            # keep first point unconditionally
-            kept.append(p)
-            kept_arr = np.array(kept)
-            tree = cKDTree(kept_arr)
-            continue
-        # check proximity to already kept points
-        idxs = tree.query_ball_point(p, merge_radius)
-        if len(idxs) == 0:
-            kept.append(p)
-            kept_arr = np.vstack([kept_arr, p])
-            tree = cKDTree(kept_arr)
-    return np.asarray(kept)
 
 def contact_points_from_single_npz(file_path):
     """
     Loads a SINGLE *_3d_contacts.npz file, deduplicates first (preserving the
     file's existing distance order), then keeps up to top_k points.
     - Assumes 'contacts' array columns are [x, y, z, distance] and that rows
-      are already ordered by increasing distance (as you said).
+      are already ordered by increasing distance.
     """
     data = np.load(file_path)
     if "contacts" not in data:
         raise ValueError(f"File {os.path.basename(file_path)} missing 'contacts' key.")
     contacts = data["contacts"]  # shape: (N, 4) -> x, y, z, distance
     positions = contacts[:, :3]  # keep order (already sorted by distance)
-    '''
-    # 1) dedup first (greedy keeps earlier/closer reps, drops near-duplicates)
-    unique_points = deduplicate_contact_points_greedy(positions, merge_radius=merge_radius)
-    # 2) then cap to top_k (may be fewer than top_k if many merged — by design)
-    if top_k is not None:
-        unique_points = unique_points[:top_k]
-    '''
+    
     return positions
-
-
-
