@@ -171,8 +171,7 @@ def combine_contact_points(folder_path, top_k=150):
 
 def contact_points_from_single_npz(file_path):
     """
-    Loads a SINGLE *_3d_contacts.npz file, deduplicates first (preserving the
-    file's existing distance order), then keeps up to top_k points.
+    Loads a SINGLE *_3d_contacts.npz file.
     - Assumes 'contacts' array columns are [x, y, z, distance] and that rows
       are already ordered by increasing distance.
     """
